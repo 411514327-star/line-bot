@@ -1,0 +1,780 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>LINE 群組相簿 Bot（改善版）- 開發紀錄與成果展示</title>
+  <style>
+    :root {
+      --primary: #06c755;
+      --primary-dark: #05a546;
+      --bg-dark: #0f172a;
+      --card-bg: #1e293b;
+      --card-border: #334155;
+      --text-main: #f8fafc;
+      --text-muted: #94a3b8;
+      --accent-blue: #38bdf8;
+      --accent-purple: #c084fc;
+      --accent-amber: #fb923c;
+      --accent-red: #f87171;
+    }
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, "Microsoft JhengHei", sans-serif;
+    }
+    body {
+      background-color: var(--bg-dark);
+      color: var(--text-main);
+      line-height: 1.6;
+      padding-bottom: 60px;
+    }
+    header {
+      background: rgba(15, 23, 42, 0.95);
+      backdrop-filter: blur(8px);
+      border-bottom: 1px solid var(--card-border);
+      position: sticky;
+      top: 0;
+      z-index: 100;
+      padding: 16px 24px;
+    }
+    .header-container {
+      max-width: 1100px;
+      margin: 0 auto;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      flex-wrap: wrap;
+      gap: 12px;
+    }
+    .logo-area {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+    }
+    .badge {
+      background: var(--primary);
+      color: white;
+      font-size: 13px;
+      font-weight: 700;
+      padding: 4px 10px;
+      border-radius: 6px;
+    }
+    .title-text {
+      font-size: 18px;
+      font-weight: 700;
+      color: white;
+    }
+    nav {
+      display: flex;
+      gap: 16px;
+      flex-wrap: wrap;
+    }
+    nav a {
+      color: var(--text-muted);
+      text-decoration: none;
+      font-size: 14px;
+      font-weight: 500;
+      transition: color 0.2s;
+    }
+    nav a:hover {
+      color: var(--accent-blue);
+    }
+    main {
+      max-width: 1100px;
+      margin: 32px auto;
+      padding: 0 20px;
+      display: flex;
+      flex-direction: column;
+      gap: 48px;
+    }
+    .hero {
+      background: linear-gradient(135deg, rgba(6, 199, 85, 0.1) 0%, rgba(56, 189, 248, 0.08) 100%);
+      border: 1px solid rgba(6, 199, 85, 0.3);
+      border-radius: 20px;
+      padding: 40px;
+      text-align: center;
+    }
+    .hero h1 {
+      font-size: 32px;
+      font-weight: 800;
+      margin-bottom: 16px;
+      color: white;
+    }
+    .hero p {
+      font-size: 16px;
+      color: var(--text-muted);
+      max-width: 800px;
+      margin: 0 auto 24px;
+    }
+    .cta-group {
+      display: flex;
+      justify-content: center;
+      gap: 16px;
+      flex-wrap: wrap;
+    }
+    .btn {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      padding: 10px 22px;
+      border-radius: 10px;
+      font-size: 14px;
+      font-weight: 600;
+      text-decoration: none;
+      transition: all 0.2s;
+    }
+    .btn-primary {
+      background: var(--primary);
+      color: white;
+    }
+    .btn-primary:hover {
+      background: var(--primary-dark);
+      transform: translateY(-2px);
+    }
+    .btn-secondary {
+      background: var(--card-bg);
+      color: var(--accent-blue);
+      border: 1px solid var(--card-border);
+    }
+    .btn-secondary:hover {
+      border-color: var(--accent-blue);
+      transform: translateY(-2px);
+    }
+    .section-title {
+      font-size: 24px;
+      font-weight: 700;
+      margin-bottom: 8px;
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+    .section-desc {
+      color: var(--text-muted);
+      font-size: 14px;
+      margin-bottom: 24px;
+    }
+    .card {
+      background: var(--card-bg);
+      border: 1px solid var(--card-border);
+      border-radius: 14px;
+      padding: 24px;
+    }
+    .grid-2 {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
+      gap: 20px;
+    }
+    .grid-3 {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+      gap: 20px;
+    }
+    .feature-icon {
+      font-size: 24px;
+      margin-bottom: 12px;
+      display: inline-block;
+    }
+    .feature-title {
+      font-size: 17px;
+      font-weight: 700;
+      margin-bottom: 8px;
+      color: white;
+    }
+    .feature-text {
+      font-size: 13px;
+      color: var(--text-muted);
+      line-height: 1.6;
+    }
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 13px;
+      text-align: left;
+    }
+    th, td {
+      padding: 12px 14px;
+      border-bottom: 1px solid var(--card-border);
+    }
+    th {
+      background: rgba(15, 23, 42, 0.6);
+      color: white;
+      font-weight: 600;
+    }
+    tr:hover {
+      background: rgba(255, 255, 255, 0.02);
+    }
+    .status-badge {
+      display: inline-block;
+      padding: 2px 8px;
+      border-radius: 9999px;
+      font-size: 12px;
+      font-weight: 600;
+    }
+    .status-pass {
+      background: rgba(6, 199, 85, 0.15);
+      color: var(--primary);
+      border: 1px solid rgba(6, 199, 85, 0.3);
+    }
+    .status-note {
+      background: rgba(251, 146, 60, 0.15);
+      color: var(--accent-amber);
+      border: 1px solid rgba(251, 146, 60, 0.3);
+    }
+    .gallery {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+      gap: 16px;
+    }
+    .gallery-item {
+      background: #090d16;
+      border: 1px solid var(--card-border);
+      border-radius: 12px;
+      overflow: hidden;
+      display: flex;
+      flex-direction: column;
+      transition: transform 0.2s, border-color 0.2s;
+    }
+    .gallery-item:hover {
+      transform: translateY(-4px);
+      border-color: var(--accent-blue);
+    }
+    .gallery-item img {
+      width: 100%;
+      height: 380px;
+      object-fit: cover;
+      object-position: top;
+      background: #000;
+      cursor: pointer;
+    }
+    .gallery-info {
+      padding: 12px;
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+      justify-content: space-between;
+    }
+    .gallery-title {
+      font-size: 13px;
+      font-weight: 700;
+      color: white;
+      margin-bottom: 4px;
+    }
+    .gallery-caption {
+      font-size: 11px;
+      color: var(--text-muted);
+      line-height: 1.4;
+    }
+    .code-block {
+      background: #090d16;
+      border: 1px solid var(--card-border);
+      border-radius: 8px;
+      padding: 14px 16px;
+      font-family: Consolas, Monaco, "Courier New", monospace;
+      font-size: 13px;
+      color: #38bdf8;
+      overflow-x: auto;
+      margin: 10px 0;
+    }
+    .timeline {
+      display: flex;
+      flex-direction: column;
+      gap: 20px;
+      position: relative;
+      padding-left: 20px;
+      border-left: 2px solid var(--card-border);
+    }
+    .timeline-node {
+      position: relative;
+    }
+    .timeline-node::before {
+      content: "";
+      position: absolute;
+      left: -27px;
+      top: 4px;
+      width: 12px;
+      height: 12px;
+      border-radius: 50%;
+      background: var(--primary);
+      border: 2px solid var(--bg-dark);
+    }
+    .timeline-title {
+      font-size: 16px;
+      font-weight: 700;
+      color: white;
+      margin-bottom: 4px;
+    }
+    .timeline-desc {
+      font-size: 13px;
+      color: var(--text-muted);
+    }
+    footer {
+      text-align: center;
+      padding: 40px 20px 0;
+      border-top: 1px solid var(--card-border);
+      color: var(--text-muted);
+      font-size: 13px;
+      max-width: 1100px;
+      margin: 0 auto;
+    }
+  </style>
+</head>
+<body>
+
+  <header>
+    <div class="header-container">
+      <div class="logo-area">
+        <span class="badge">LINE Bot 成果展示</span>
+        <div class="title-text">群組相簿 Bot（改善版）開發紀錄</div>
+      </div>
+      <nav>
+        <a href="#about">專題介紹</a>
+        <a href="#features">核心功能</a>
+        <a href="#demo">操作與實測</a>
+        <a href="#process">開發過程</a>
+        <a href="#ai">AI 協作</a>
+        <a href="#test">測試紀錄</a>
+        <a href="#reflection">心得與限制</a>
+        <a href="#links">成果連結</a>
+      </nav>
+    </div>
+  </header>
+
+  <main>
+
+    <!-- Hero Section -->
+    <section class="hero" id="about">
+      <h1>LINE 群組相簿 Bot（改善版）</h1>
+      <p>針對 LINE 群組相片易被文字洗版、下載過期失效之痛點，使用 FastAPI、LINE Messaging API SDK v3 與 Cloudflare Tunnel 打造之智慧相簿機器人。具備群組照片自動存檔、自訂天數輪播回顧、健全防呆校驗與聊天場景安全隔離機制。</p>
+      <div class="cta-group">
+        <a href="https://github.com/411514327-star/line-bot" target="_blank" class="btn btn-primary">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor"><path d="M12 0c-6.626 0-12 5.373-12 12 0 5.302 3.438 9.8 8.207 11.387.599.111.793-.261.793-.577v-2.234c-3.338.726-4.033-1.416-4.033-1.416-.546-1.387-1.333-1.756-1.333-1.756-1.089-.745.083-.729.083-.729 1.205.084 1.839 1.237 1.839 1.237 1.07 1.834 2.807 1.304 3.492.997.107-.775.418-1.305.762-1.604-2.665-.305-5.467-1.334-5.467-5.931 0-1.311.469-2.381 1.236-3.221-.124-.303-.535-1.524.117-3.176 0 0 1.008-.322 3.301 1.23.957-.266 1.983-.399 3.003-.404 1.02.005 2.047.138 3.006.404 2.291-1.552 3.297-1.23 3.297-1.23.653 1.653.242 2.874.118 3.176.77.84 1.235 1.911 1.235 3.221 0 4.609-2.807 5.624-5.479 5.921.43.372.823 1.102.823 2.222v3.293c0 .319.192.694.801.576 4.765-1.589 8.199-6.086 8.199-11.386 0-6.627-5.373-12-12-12z"/></svg>
+          前往 GitHub 專案儲存庫
+        </a>
+        <a href="#demo" class="btn btn-secondary">瀏覽實測截圖與證明</a>
+      </div>
+    </section>
+
+    <!-- Overview Details -->
+    <section>
+      <div class="grid-3">
+        <div class="card">
+          <div class="feature-title">🎯 專案用途與目標</div>
+          <div class="feature-text">在社團、家庭或朋友群組中，相片常被後續大量文字訊息洗版淹沒。本 Bot 能於後台自動保存群組發送之相片，隨時供成員以卡片形式回顧近期回憶。</div>
+        </div>
+        <div class="card">
+          <div class="feature-title">👥 目標使用對象</div>
+          <div class="feature-text">日常熱絡的 LINE 多人聊天室、社團活動群組、旅遊出遊群組，以及需要定時回顧群組日常相片之成員。</div>
+        </div>
+        <div class="card">
+          <div class="feature-title">💡 解決的核心問題</div>
+          <div class="feature-text">解決相片下載過期失效、找舊照需翻找聊天紀錄的困擾；並透過改善版解決語音/貼圖已讀不回、指令輸入錯誤無提示等互動缺陷。</div>
+        </div>
+      </div>
+    </section>
+
+    <!-- Core Features -->
+    <section id="features">
+      <div class="section-title">✨ 五大核心功能與指令範例</div>
+      <div class="section-desc">從第一版基準至改善版，落實模組化設計與健全防呆驗證</div>
+      <div class="grid-2">
+        <div class="card">
+          <span class="feature-icon">📸</span>
+          <div class="feature-title">1. 群組相片自動儲存</div>
+          <div class="feature-text">
+            群組成員發送相片時，Webhook 自動觸發 <code>ImageMessageContent</code>，透過 LINE Messaging Blob API 下載相片並儲存至本機，SQLite 資料庫自動記錄群組 ID 與時間。回覆確認訊息：<br>
+            <code>📸 照片已成功儲存到群組相簿！</code>
+          </div>
+        </div>
+        <div class="card">
+          <span class="feature-icon">🎠</span>
+          <div class="feature-title">2. 智慧 Flex Carousel 輪播回顧</div>
+          <div class="feature-text">
+            支援指定天數回顧與預設回顧：
+            <ul style="margin: 8px 0 0 18px;">
+              <li><code>回顧</code>：預設撈取過去 7 天照片。</li>
+              <li><code>回顧 3</code>：動態撈取過去 3 天照片。</li>
+              <li>回傳精美輪播卡片，顯示日期時間並支援點擊檢視原圖。</li>
+            </ul>
+          </div>
+        </div>
+        <div class="card">
+          <span class="feature-icon">🛡️</span>
+          <div class="feature-title">3. 健全輸入檢查與格式防呆</div>
+          <div class="feature-text">
+            徹底消除無效指令與操作疑惑：
+            <ul style="margin: 8px 0 0 18px;">
+              <li>純空格/空白訊息：提示勿傳送純空白，並給予功能範例。</li>
+              <li>無效天數（如 <code>回顧 abc</code>、<code>回顧 0</code>）：主動提示輸入數字，並給出 <code>回顧 3</code> 等範例。</li>
+            </ul>
+          </div>
+        </div>
+        <div class="card">
+          <span class="feature-icon">💬</span>
+          <div class="feature-title">4. 不支援輸入與未知文字引導</div>
+          <div class="feature-text">
+            消除「已讀不回」的負面體驗：
+            <ul style="margin: 8px 0 0 18px;">
+              <li>傳送貼圖、影片、語音、位置：提示目前僅支援相片，並引導輸入「說明」。</li>
+              <li>未知文字（如 <code>哈囉</code>）：不再無意義 Echo，而是提示無法辨識並引導「說明」。</li>
+            </ul>
+          </div>
+        </div>
+        <div class="card" style="grid-column: 1 / -1;">
+          <span class="feature-icon">🔒</span>
+          <div class="feature-title">5. 聊天室場景防護（群組限定）</div>
+          <div class="feature-text">
+            群組相簿具備群組共享特質。若使用者於一對一私聊傳送照片或輸入「回顧」，Bot 主動攔截並提示：<br>
+            <code>⚠️ 本相簿功能僅支援在群組中使用，請將我加入群組後再傳送照片喔！</code>，確保相簿資料隔離與正確歸屬。
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- Operation Demo & Screenshots -->
+    <section id="demo">
+      <div class="section-title">📱 實測證明與操作示範（實機對話截圖）</div>
+      <div class="section-desc">以下展示實機於 LINE App 測試群組與私聊視窗親自實測之 11 張完整對話截圖</div>
+      <div class="gallery">
+        <div class="gallery-item">
+          <img src="screenshots/line%20bot測試截圖1.jpg" alt="截圖 1" onclick="window.open(this.src)">
+          <div class="gallery-info">
+            <div class="gallery-title">截圖 1 • 基準版回顧與未改善特徵</div>
+            <div class="gallery-caption">輸入「回顧」正確顯示 7 天輪播；「回顧 3」與「哈囉」僅 Echo；貼圖無回應。</div>
+          </div>
+        </div>
+        <div class="gallery-item">
+          <img src="screenshots/line%20bot測試截圖2.jpg" alt="截圖 2" onclick="window.open(this.src)">
+          <div class="gallery-info">
+            <div class="gallery-title">截圖 2 • 基準版群組存檔實測</div>
+            <div class="gallery-caption">群組上傳相片成功提示存檔；輸入「回顧」回傳 Flex 輪播卡片。</div>
+          </div>
+        </div>
+        <div class="gallery-item">
+          <img src="screenshots/line%20bot測試截圖3.jpg" alt="截圖 3" onclick="window.open(this.src)">
+          <div class="gallery-info">
+            <div class="gallery-title">截圖 3 • 基準版說明指南</div>
+            <div class="gallery-caption">輸入「說明」顯示 v1 基準版功能選單；上傳食物照片成功存檔。</div>
+          </div>
+        </div>
+        <div class="gallery-item">
+          <img src="screenshots/line%20bot測試截圖4.jpg" alt="截圖 4" onclick="window.open(this.src)">
+          <div class="gallery-info">
+            <div class="gallery-title">截圖 4 • 私聊限制實測</div>
+            <div class="gallery-caption">於個人一對一聊天室輸入「回顧」，Bot 正確提示僅限於群組中使用。</div>
+          </div>
+        </div>
+        <div class="gallery-item">
+          <img src="screenshots/line%20bot測試截圖5.jpg" alt="截圖 5" onclick="window.open(this.src)">
+          <div class="gallery-info">
+            <div class="gallery-title">截圖 5 • 輪播卡片展示</div>
+            <div class="gallery-caption">完整展示 LINE Flex Carousel 在手機端之流暢卡片橫向滑動效果。</div>
+          </div>
+        </div>
+        <div class="gallery-item">
+          <img src="screenshots/line%20bot測試截圖6.jpg" alt="截圖 6" onclick="window.open(this.src)">
+          <div class="gallery-info">
+            <div class="gallery-title">截圖 6 • 改善版參數錯誤檢查</div>
+            <div class="gallery-caption">輸入「回顧 abc」與「回顧 0」，Bot 提示輸入有效天數數字並提供範例。</div>
+          </div>
+        </div>
+        <div class="gallery-item">
+          <img src="screenshots/line%20bot測試截圖7.jpg" alt="截圖 7" onclick="window.open(this.src)">
+          <div class="gallery-info">
+            <div class="gallery-title">截圖 7 • 改善版貼圖主動提示</div>
+            <div class="gallery-caption">群組傳送貼圖，Bot 不再已讀不回，而是主動提示不支援並引導「說明」。</div>
+          </div>
+        </div>
+        <div class="gallery-item">
+          <img src="screenshots/line%20bot測試截圖8.jpg" alt="截圖 8" onclick="window.open(this.src)">
+          <div class="gallery-info">
+            <div class="gallery-title">截圖 8 • 群組相片存檔與驗證</div>
+            <div class="gallery-caption">改善版群組相片存檔連續測試與指令錯誤提示雙向驗證。</div>
+          </div>
+        </div>
+        <div class="gallery-item">
+          <img src="screenshots/line%20bot測試截圖9.jpg" alt="截圖 9" onclick="window.open(this.src)">
+          <div class="gallery-info">
+            <div class="gallery-title">截圖 9 • 私聊傳照片防護</div>
+            <div class="gallery-caption">私聊傳送炒飯照片，Bot 溫和提示相簿僅支援群組，不擅自存檔。</div>
+          </div>
+        </div>
+        <div class="gallery-item">
+          <img src="screenshots/line%20bot測試截圖10.jpg" alt="截圖 10" onclick="window.open(this.src)">
+          <div class="gallery-info">
+            <div class="gallery-title">截圖 10 • 未知指令意圖引導</div>
+            <div class="gallery-caption">群組輸入「哈囉」或複合文字，Bot 提示無法辨識並引導查看「說明」。</div>
+          </div>
+        </div>
+        <div class="gallery-item">
+          <img src="screenshots/line%20bot測試截圖11.jpg" alt="截圖 11" onclick="window.open(this.src)">
+          <div class="gallery-info">
+            <div class="gallery-title">截圖 11 • 自訂 3 天動態回顧</div>
+            <div class="gallery-caption">輸入「回顧 3」精準撈取最近 3 天照片輪播；輸入「回顧」預設 7 天。</div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- Development Process -->
+    <section id="process">
+      <div class="section-title">🛠️ 開發歷程與三次 Commit 架構</div>
+      <div class="section-desc">落實軟體工程最佳實踐：基準版 ➔ 改善版 ➔ 文件與測試紀錄交付</div>
+      <div class="timeline">
+        <div class="timeline-node">
+          <div class="timeline-title">Commit 1 (SHA: 421fbe6) • 完成第一版基準</div>
+          <div class="timeline-desc">
+            清理先前練習代碼，重構為專屬群組相簿 Bot。實作群組照片接收存檔（LINE Blob API + SQLite）、固定 7 天「回顧」輪播與「說明」功能。刻意保留未改善特徵（Echo、貼圖無回應、無天數參數），做為對照基準。
+          </div>
+        </div>
+        <div class="timeline-node">
+          <div class="timeline-title">Commit 2 (SHA: a7cc319) • 完成改善版核心功能</div>
+          <div class="timeline-desc">
+            實作四大關鍵改善：
+            1. 空白與純空格防呆驗證。
+            2. 不支援訊息（貼圖/影片/語音/位置）主動提示並引導「說明」。
+            3. 動態天數回顧（支援 <code>回顧 3</code>、非法參數提示與範例）。
+            4. 一對一私聊傳照與回顧限制，守護群組相簿邊界。
+          </div>
+        </div>
+        <div class="timeline-node">
+          <div class="timeline-title">Commit 3 (SHA: 2f57cef) • 專案說明、測試紀錄表與實測截圖交付</div>
+          <div class="timeline-desc">
+            建立 <code>docs/test-log.md</code> 完整測試紀錄表、更新繁體中文 <code>README.md</code>、完善 <code>.env.example</code> 佔位範本，並將 11 張實測截圖正式納入儲存庫。
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- AI Collaboration -->
+    <section id="ai">
+      <div class="section-title">🤖 AI Agent 協作歷程與校正經驗</div>
+      <div class="section-desc">詳細記錄與 Google Antigravity AI Agent 之互動指令、協作分工與校正經驗</div>
+      <div class="grid-2">
+        <div class="card">
+          <div class="feature-title">🛠️ 使用的 AI 工具與協作模式</div>
+          <div class="feature-text">
+            採用 <strong>Google Antigravity AI Coding Assistant</strong> 進行結對編程（Pair Programming）。由人類開發者主導架構決策與實機測試，AI 負責程式碼重構、Flex Carousel 模板構建、Git 版本控管及自動化文件排版。
+          </div>
+        </div>
+        <div class="card">
+          <div class="feature-title">💬 代表性提示詞指令 (Prompt)</div>
+          <div class="feature-text">
+            <div class="code-block">
+作業要比較「改善前後」，請拆成三次 commit：
+- Commit 1（第一版基準）：收群組照片並存檔、「回顧」輪播（固定 7 天）、「說明」。先不做輸入檢查和不支援輸入處理。
+- Commit 2（改善版）：輸入檢查、不支援輸入提示、「回顧 天數」、一對一聊天提示。
+- Commit 3：文件（README、test-log、project-plan、.env.example）。
+每次 commit 前先告訴我要測什麼，我實測後再 commit。
+            </div>
+          </div>
+        </div>
+        <div class="card" style="grid-column: 1 / -1;">
+          <div class="feature-title">🔍 檢查與修正 AI 產出的關鍵經驗（自我校正紀錄）</div>
+          <div class="feature-text" style="font-size: 14px;">
+            在本次專案協作中，有兩次非常關鍵的檢查與校正過程：
+            <ol style="margin: 12px 0 0 20px; display: flex; flex-direction: column; gap: 8px;">
+              <li><strong>專案起點校正</strong>：初次分析儲存庫時，發現舊有代碼為先前課堂練習的「BMI 計算器」。AI 主動向開發者提出差異警告，開發者即時確認「BMI 僅為先前測試練習，非本次作業」，指示 AI 徹底移除 BMI 相關代碼，從頭建立全新群組相簿 Bot，避免將錯誤基礎納入版本控制。</li>
+              <li><strong>客戶端環境限制確認</strong>：在測試 2-1「空白輸入檢查」時，開發者實測發現 LINE App 手機端在文字框僅有空格時，原生發送按鈕會呈現灰色禁用狀態，導致實機無法傳送純空格。AI 與開發者確認此為「行動客戶端原生限制」，決定於測試紀錄表中如實記載「無法實測（前端限制）」，同時後端仍保留嚴密的防禦校驗邏輯，展現誠實且具工程嚴謹性的測試態度。</li>
+              <li><strong>資安與機密保護</strong>：嚴密檢核 Git 提交流程，要求簡報暫存檔與本地照片不進 Git，且 <code>.env</code> 金鑰僅存本機，遠端儲存庫僅保留 <code>.env.example</code>，完全符合資安規範。</li>
+            </ol>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- Test Log Table -->
+    <section id="test">
+      <div class="section-title">📊 測試結果紀錄表（13 項實機驗證）</div>
+      <div class="section-desc">詳實記錄 1-1~1-5（基準版）與 2-1~2-8（改善版）實測對照</div>
+      <div class="card" style="padding: 0; overflow-x: auto;">
+        <table>
+          <thead>
+            <tr>
+              <th>階段</th>
+              <th>編號</th>
+              <th>測試項目</th>
+              <th>輸入內容</th>
+              <th>預期結果</th>
+              <th>實際結果（實測填寫）</th>
+              <th>狀態</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td>基準版</td>
+              <td>1-1</td>
+              <td>相片儲存</td>
+              <td>群組傳送照片</td>
+              <td>回覆儲存成功，本機存檔</td>
+              <td>成功，照片已成功儲存到群組相簿</td>
+              <td><span class="status-badge status-pass">✅ 通過</span></td>
+            </tr>
+            <tr>
+              <td>基準版</td>
+              <td>1-2</td>
+              <td>相簿回顧</td>
+              <td>輸入「回顧」</td>
+              <td>回傳 7 天 Flex 輪播</td>
+              <td>都有存成功，正確顯示相片輪播</td>
+              <td><span class="status-badge status-pass">✅ 通過</span></td>
+            </tr>
+            <tr>
+              <td>基準版</td>
+              <td>1-3</td>
+              <td>功能說明</td>
+              <td>輸入「說明」</td>
+              <td>回傳基準版清單</td>
+              <td>通過，正確回傳說明文字</td>
+              <td><span class="status-badge status-pass">✅ 通過</span></td>
+            </tr>
+            <tr>
+              <td>基準版</td>
+              <td>1-4</td>
+              <td>未知指令</td>
+              <td>輸入「回顧 3」/「哈囉」</td>
+              <td>無參數解析，單純 Echo</td>
+              <td>只有收到訊息（未執行查詢）</td>
+              <td><span class="status-badge status-pass">✅ 符合基準</span></td>
+            </tr>
+            <tr>
+              <td>基準版</td>
+              <td>1-5</td>
+              <td>不支援類型</td>
+              <td>傳送貼圖/語音</td>
+              <td>無處理程序，不予回應</td>
+              <td>沒回應，Bot 完全無訊息</td>
+              <td><span class="status-badge status-pass">✅ 符合基準</span></td>
+            </tr>
+            <tr>
+              <td>改善版</td>
+              <td>2-1</td>
+              <td>純空格檢查</td>
+              <td>輸入純空白發送</td>
+              <td>提示勿傳空格並附範例</td>
+              <td>無法實測（LINE App 傳送鍵反灰禁用）</td>
+              <td><span class="status-badge status-note">⚠️ 前端限制</span></td>
+            </tr>
+            <tr>
+              <td>改善版</td>
+              <td>2-2</td>
+              <td>無效參數檢查</td>
+              <td>「回顧 abc」/「回顧 0」</td>
+              <td>提示有效數字並附範例</td>
+              <td>成功無效，明確提示輸入有效天數數字</td>
+              <td><span class="status-badge status-pass">✅ 通過</span></td>
+            </tr>
+            <tr>
+              <td>改善版</td>
+              <td>2-3</td>
+              <td>不支援類型引導</td>
+              <td>傳送貼圖/語音/影片</td>
+              <td>提示不支援並引導「說明」</td>
+              <td>成功無效，主動提示不支援該類型</td>
+              <td><span class="status-badge status-pass">✅ 通過</span></td>
+            </tr>
+            <tr>
+              <td>改善版</td>
+              <td>2-4</td>
+              <td>未知文字引導</td>
+              <td>輸入「哈囉」/未辨識文字</td>
+              <td>提示無法辨識並引導「說明」</td>
+              <td>成功無效，明確告知無法辨識並引導說明</td>
+              <td><span class="status-badge status-pass">✅ 通過</span></td>
+            </tr>
+            <tr>
+              <td>改善版</td>
+              <td>2-5</td>
+              <td>自訂天數回顧</td>
+              <td>輸入「回顧 3」</td>
+              <td>回傳最近 3 天輪播</td>
+              <td>成功，回傳最近 3 天照片輪播</td>
+              <td><span class="status-badge status-pass">✅ 通過</span></td>
+            </tr>
+            <tr>
+              <td>改善版</td>
+              <td>2-6</td>
+              <td>預設天數回顧</td>
+              <td>輸入「回顧」</td>
+              <td>回傳最近 7 天輪播</td>
+              <td>成功，正確回傳最近 7 天照片輪播</td>
+              <td><span class="status-badge status-pass">✅ 通過</span></td>
+            </tr>
+            <tr>
+              <td>改善版</td>
+              <td>2-7</td>
+              <td>私聊傳相片限制</td>
+              <td>私聊傳送照片</td>
+              <td>提示相簿僅限群組使用</td>
+              <td>成功，回覆僅支援在群組中使用</td>
+              <td><span class="status-badge status-pass">✅ 通過</span></td>
+            </tr>
+            <tr>
+              <td>改善版</td>
+              <td>2-8</td>
+              <td>私聊回顧限制</td>
+              <td>私聊輸入「回顧」</td>
+              <td>提示回顧僅限群組使用</td>
+              <td>成功，回覆「回顧」功能僅支援群組</td>
+              <td><span class="status-badge status-pass">✅ 通過</span></td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </section>
+
+    <!-- Reflections and Limitations -->
+    <section id="reflection">
+      <div class="section-title">💡 學習心得與已知限制</div>
+      <div class="section-desc">反思開發歷程之收穫與系統邊界</div>
+      <div class="grid-2">
+        <div class="card">
+          <div class="feature-title">🎓 學習收穫與心得</div>
+          <div class="feature-text">
+            1. <strong>LINE Messaging SDK v3 架構掌握</strong>：深入理解 Webhook 事件分發機制（<code>MessageEvent</code>、<code>ImageMessageContent</code>）及非同步 Web 框架 FastAPI 的結合運用。<br>
+            2. <strong>防呆與人機互動設計</strong>：認識到良好對話體驗不僅在於「主功能可用」，更在於「異常輸入時的引導閉環」——消除已讀不回，以清晰提示指導使用者。<br>
+            3. <strong>版本控管實務</strong>：學會以清晰的 Commit 脈絡展示軟體迭代歷程（基準版 ➔ 改善版 ➔ 文件交付），奠定良好工程習慣。
+          </div>
+        </div>
+        <div class="card">
+          <div class="feature-title">⚠️ 系統已知限制與後續改進方向</div>
+          <div class="feature-text">
+            1. <strong>公網 HTTPS 依賴</strong>：LINE Flex 圖片加載必須具備有效 HTTPS 網址，本機測試需依賴 Cloudflare Tunnel；若後續部署至雲端 PaaS（如 Render / Railway），將可獲得固定永久域名。<br>
+            2. <strong>Flex Carousel 卡片上限</strong>：LINE API 規定單則 Carousel 訊息上限為 10~12 張 Bubble，照片過多時需導入分頁或篩選機制。<br>
+            3. <strong>相簿持久化儲存</strong>：目前採用 SQLite 本地檔案，未來若有多伺服器負載平衡需求，可考慮遷移至 S3 / Cloudinary 雲端物件儲存。
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- Project Links -->
+    <section id="links">
+      <div class="card" style="text-align: center; padding: 36px 20px;">
+        <div class="feature-title" style="font-size: 20px; margin-bottom: 12px;">🔗 成果連結與交付清單</div>
+        <div class="feature-text" style="margin-bottom: 24px;">歡迎透過以下連結瀏覽完整原始碼與成果展示文件：</div>
+        <div class="cta-group">
+          <a href="https://github.com/411514327-star/line-bot" target="_blank" class="btn btn-primary">
+            GitHub 專案儲存庫
+          </a>
+          <a href="test-log.md" target="_blank" class="btn btn-secondary">
+            查看 Markdown 測試紀錄表
+          </a>
+          <a href="LINEBot-群組相簿Bot改善版-成果簡報.pdf" target="_blank" class="btn btn-secondary">
+            下載成果簡報 (PDF)
+          </a>
+          <a href="../README.md" target="_blank" class="btn btn-secondary">
+            專案 README 說明
+          </a>
+        </div>
+      </div>
+    </section>
+
+  </main>
+
+  <footer>
+    <p>LINE Bot 改善版專題開發紀錄 • 開發者：@411514327-star • 協作工具：Google Antigravity AI Agent • 2026</p>
+  </footer>
+
+</body>
+</html>
