@@ -23,7 +23,12 @@ from linebot.v3.messaging import (
 from linebot.v3.webhooks import (
     MessageEvent,
     TextMessageContent,
-    ImageMessageContent
+    ImageMessageContent,
+    StickerMessageContent,
+    VideoMessageContent,
+    AudioMessageContent,
+    LocationMessageContent,
+    FileMessageContent
 )
 
 # Ensure UTF-8 output on Windows consoles
@@ -35,7 +40,7 @@ if sys.platform == "win32":
         pass
 
 # Load environment variables
-load_dotenv()
+load_dotenv(override=True)
 
 LINE_CHANNEL_SECRET = os.getenv("LINE_CHANNEL_SECRET", "")
 LINE_CHANNEL_ACCESS_TOKEN = os.getenv("LINE_CHANNEL_ACCESS_TOKEN", "")
@@ -100,7 +105,13 @@ def get_source_id(source) -> str:
     return "default_group"
 
 
-def build_review_carousel(photos: list, base_url: str) -> FlexMessage:
+def is_group_source(source) -> bool:
+    """Check whether the event comes from a group or room chat."""
+    source_type = getattr(source, "type", "")
+    return source_type in ["group", "room"]
+
+
+def build_review_carousel(photos: list, base_url: str, days: int = 7) -> FlexMessage:
     """Build Flex Message Carousel containing recent photos."""
     bubbles = []
     # Up to 10 photos in carousel
@@ -149,7 +160,7 @@ def build_review_carousel(photos: list, base_url: str) -> FlexMessage:
         "contents": bubbles
     }
     return FlexMessage(
-        alt_text="📸 群組照片回顧",
+        alt_text=f"📸 群組照片回顧（最近 {days} 天）",
         contents=FlexContainer.from_dict(carousel_dict)
     )
 
@@ -173,9 +184,9 @@ else:
 def read_root():
     return {
         "status": "online",
-        "service": "LINE Group Album Bot (v1 基準版)",
+        "service": "LINE Group Album Bot (v2 改善版)",
         "configured": bool(LINE_CHANNEL_SECRET and LINE_CHANNEL_ACCESS_TOKEN),
-        "base_url": os.getenv("BASE_URL", "")
+        "base_url": os.getenv("BASE_URL", "").rstrip("/")
     }
 
 
@@ -195,7 +206,7 @@ async def callback(request: Request, x_line_signature: str = Header(None, alias=
     body = (await request.body()).decode("utf-8")
 
     # Determine base URL for image links
-    effective_base_url = os.getenv("BASE_URL", "").rstrip("/")
+    effective_base_url = os.getenv("BASE_URL", "").rstrip("/") or BASE_URL
     if not effective_base_url:
         forwarded_proto = request.headers.get("x-forwarded-proto", "http")
         host = request.headers.get("x-forwarded-host") or request.headers.get("host", "localhost:8000")
@@ -212,9 +223,25 @@ async def callback(request: Request, x_line_signature: str = Header(None, alias=
                     continue
 
                 source_id = get_source_id(event.source)
+                is_group = is_group_source(event.source)
 
-                # 1. 接收照片訊息並儲存
+                # 1. 照片訊息處理
                 if isinstance(event.message, ImageMessageContent):
+                    # 【改善 4】：一對一聊天傳照片提示
+                    if not is_group:
+                        line_bot_api.reply_message(
+                            ReplyMessageRequest(
+                                reply_token=event.reply_token,
+                                messages=[
+                                    TextMessage(
+                                        text="⚠️ 本相簿功能僅支援在群組中使用，請將我加入群組後再傳送照片喔！"
+                                    )
+                                ]
+                            )
+                        )
+                        continue
+
+                    # 群組照片：下載並儲存
                     image_bytes = line_bot_blob_api.get_message_content(event.message.id)
                     file_name = f"{event.message.id}.jpg"
                     file_path = os.path.join(PHOTOS_DIR, file_name)
@@ -234,32 +261,42 @@ async def callback(request: Request, x_line_signature: str = Header(None, alias=
                         )
                     )
 
-                # 2. 接收文字訊息
+                # 2. 文字訊息處理
                 elif isinstance(event.message, TextMessageContent):
-                    user_text = event.message.text.strip()
+                    raw_text = event.message.text
 
-                    # 【回顧功能】：固定 7 天
-                    if user_text == "回顧":
-                        photos = get_photos(group_id=source_id, days=7)
-                        if not photos:
-                            reply_msg = TextMessage(text="最近 7 天內沒有照片紀錄喔！")
-                        else:
-                            reply_msg = build_review_carousel(photos, effective_base_url)
-
+                    # 【改善 1】：空白與純空格檢查
+                    if not raw_text or raw_text.isspace():
+                        reply_text = (
+                            "⚠️ 請勿發送純空白訊息。\n\n"
+                            "💡 可用指令範例：\n"
+                            "• 輸入「說明」：查看完整功能指南\n"
+                            "• 輸入「回顧」：查看最近 7 天照片輪播\n"
+                            "• 輸入「回顧 3」：查看最近 3 天照片輪播"
+                        )
                         line_bot_api.reply_message(
                             ReplyMessageRequest(
                                 reply_token=event.reply_token,
-                                messages=[reply_msg]
+                                messages=[TextMessage(text=reply_text)]
                             )
                         )
+                        continue
+
+                    user_text = raw_text.strip()
 
                     # 【說明功能】
-                    elif user_text == "說明":
+                    if user_text == "說明":
                         help_text = (
-                            "🤖 群組相簿 Bot 使用說明（v1 基準版）：\n\n"
-                            "1. 發送照片：自動儲存至群組相簿\n"
-                            "2. 輸入「回顧」：查看最近 7 天的照片輪播\n"
-                            "3. 輸入「說明」：查看此功能說明"
+                            "🤖 群組相簿 Bot 使用說明：\n\n"
+                            "1. 【儲存照片】\n"
+                            "   在群組中發送照片，將自動儲存至相簿。\n"
+                            "   （⚠️ 本功能僅限群組使用）\n\n"
+                            "2. 【照片回顧】\n"
+                            "   • 輸入「回顧」：查看最近 7 天照片輪播\n"
+                            "   • 輸入「回顧 3」：查看最近 3 天照片輪播（天數可自訂）\n"
+                            "   （⚠️ 本功能僅限群組使用）\n\n"
+                            "3. 【功能指南】\n"
+                            "   • 輸入「說明」：隨時叫出此說明選單"
                         )
                         line_bot_api.reply_message(
                             ReplyMessageRequest(
@@ -268,14 +305,91 @@ async def callback(request: Request, x_line_signature: str = Header(None, alias=
                             )
                         )
 
-                    # 【第一版基準行為】：未處理輸入檢查與格式，僅做簡單 Echo 回覆
-                    else:
+                    # 【改善 3 & 4】：「回顧」與動態天數指令
+                    elif user_text == "回顧" or user_text.startswith("回顧"):
+                        # 一對一聊天限制
+                        if not is_group:
+                            line_bot_api.reply_message(
+                                ReplyMessageRequest(
+                                    reply_token=event.reply_token,
+                                    messages=[
+                                        TextMessage(
+                                            text="⚠️ 「回顧」功能僅支援在群組中使用，請將我加入群組後再試喔！"
+                                        )
+                                    ]
+                                )
+                            )
+                            continue
+
+                        # 判斷天數參數
+                        if user_text == "回顧":
+                            days = 7
+                        else:
+                            arg = user_text[2:].strip()
+                            if arg.isdigit() and int(arg) > 0:
+                                days = int(arg)
+                            else:
+                                # 格式錯誤提示與範例
+                                invalid_reply = (
+                                    "⚠️ 請輸入有效的天數數字！\n\n"
+                                    "💡 指令範例：\n"
+                                    "• `回顧`（預設查看最近 7 天）\n"
+                                    "• `回顧 3`（查看最近 3 天）\n"
+                                    "• `回顧 14`（查看最近 14 天）"
+                                )
+                                line_bot_api.reply_message(
+                                    ReplyMessageRequest(
+                                        reply_token=event.reply_token,
+                                        messages=[TextMessage(text=invalid_reply)]
+                                    )
+                                )
+                                continue
+
+                        # 撈取照片並組裝輪播
+                        photos = get_photos(group_id=source_id, days=days)
+                        if not photos:
+                            reply_msg = TextMessage(text=f"最近 {days} 天內沒有照片紀錄喔！")
+                        else:
+                            reply_msg = build_review_carousel(photos, effective_base_url, days=days)
+
                         line_bot_api.reply_message(
                             ReplyMessageRequest(
                                 reply_token=event.reply_token,
-                                messages=[TextMessage(text=f"📢 收到訊息：{event.message.text}")]
+                                messages=[reply_msg]
                             )
                         )
+
+                    # 【改善 2】：不認識的文字指令引導輸入「說明」
+                    else:
+                        reply_text = (
+                            f"⚠️ 無法辨識指令「{user_text}」。\n\n"
+                            "💡 請輸入「說明」查看支援的功能與格式範例！"
+                        )
+                        line_bot_api.reply_message(
+                            ReplyMessageRequest(
+                                reply_token=event.reply_token,
+                                messages=[TextMessage(text=reply_text)]
+                            )
+                        )
+
+                # 3. 【改善 2】：不支援的訊息類型（貼圖、影片、語音、位置、檔案）
+                elif isinstance(event.message, (
+                    StickerMessageContent,
+                    VideoMessageContent,
+                    AudioMessageContent,
+                    LocationMessageContent,
+                    FileMessageContent
+                )):
+                    line_bot_api.reply_message(
+                        ReplyMessageRequest(
+                            reply_token=event.reply_token,
+                            messages=[
+                                TextMessage(
+                                    text="⚠️ 目前僅支援儲存照片與相簿指令，不支援此類型的訊息。\n\n💡 請輸入「說明」查看可用的功能指南！"
+                                )
+                            ]
+                        )
+                    )
 
     except InvalidSignatureError:
         raise HTTPException(status_code=400, detail="Invalid signature. Please verify Channel Secret.")
