@@ -1,16 +1,11 @@
 import os
 import sys
-
-# Ensure UTF-8 output on Windows consoles
-if sys.platform == "win32":
-    try:
-        sys.stdout.reconfigure(encoding="utf-8")
-        sys.stderr.reconfigure(encoding="utf-8")
-    except Exception:
-        pass
+import sqlite3
+from datetime import datetime, timedelta
 from dotenv import load_dotenv
 from fastapi import FastAPI, Request, HTTPException, Header
 from fastapi.responses import JSONResponse
+from fastapi.staticfiles import StaticFiles
 import uvicorn
 
 from linebot.v3 import WebhookHandler
@@ -19,23 +14,151 @@ from linebot.v3.messaging import (
     Configuration,
     ApiClient,
     MessagingApi,
+    MessagingApiBlob,
     ReplyMessageRequest,
-    TextMessage
+    TextMessage,
+    FlexMessage,
+    FlexContainer
 )
 from linebot.v3.webhooks import (
     MessageEvent,
-    TextMessageContent
+    TextMessageContent,
+    ImageMessageContent
 )
+
+# Ensure UTF-8 output on Windows consoles
+if sys.platform == "win32":
+    try:
+        sys.stdout.reconfigure(encoding="utf-8")
+        sys.stderr.reconfigure(encoding="utf-8")
+    except Exception:
+        pass
 
 # Load environment variables
 load_dotenv()
 
 LINE_CHANNEL_SECRET = os.getenv("LINE_CHANNEL_SECRET", "")
 LINE_CHANNEL_ACCESS_TOKEN = os.getenv("LINE_CHANNEL_ACCESS_TOKEN", "")
+BASE_URL = os.getenv("BASE_URL", "").rstrip("/")
 
-app = FastAPI(title="LINE Bot FastAPI Backend")
+# SQLite & Directory Setup
+DB_PATH = "album.db"
+PHOTOS_DIR = os.path.join("static", "photos")
+os.makedirs(PHOTOS_DIR, exist_ok=True)
 
-# Initialize LINE SDK v3 handlers if keys are present
+
+def init_db():
+    """Initialize database for storing photo metadata."""
+    with sqlite3.connect(DB_PATH) as conn:
+        cursor = conn.cursor()
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS photos (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                group_id TEXT NOT NULL,
+                message_id TEXT NOT NULL,
+                file_name TEXT NOT NULL,
+                created_at TIMESTAMP NOT NULL
+            )
+        """)
+        conn.commit()
+
+
+init_db()
+
+
+def save_photo_record(group_id: str, message_id: str, file_name: str, created_at: datetime = None):
+    if created_at is None:
+        created_at = datetime.now()
+    with sqlite3.connect(DB_PATH) as conn:
+        cursor = conn.cursor()
+        cursor.execute(
+            "INSERT INTO photos (group_id, message_id, file_name, created_at) VALUES (?, ?, ?, ?)",
+            (group_id, message_id, file_name, created_at.isoformat())
+        )
+        conn.commit()
+
+
+def get_photos(group_id: str, days: int = 7):
+    cutoff = datetime.now() - timedelta(days=days)
+    with sqlite3.connect(DB_PATH) as conn:
+        cursor = conn.cursor()
+        cursor.execute(
+            "SELECT file_name, created_at FROM photos WHERE group_id = ? AND created_at >= ? ORDER BY created_at DESC",
+            (group_id, cutoff.isoformat())
+        )
+        return cursor.fetchall()
+
+
+def get_source_id(source) -> str:
+    """Retrieve group_id, room_id, or user_id as partition key."""
+    if getattr(source, "group_id", None):
+        return source.group_id
+    if getattr(source, "room_id", None):
+        return source.room_id
+    if getattr(source, "user_id", None):
+        return source.user_id
+    return "default_group"
+
+
+def build_review_carousel(photos: list, base_url: str) -> FlexMessage:
+    """Build Flex Message Carousel containing recent photos."""
+    bubbles = []
+    # Up to 10 photos in carousel
+    for file_name, created_at_str in photos[:10]:
+        img_url = f"{base_url}/static/photos/{file_name}"
+        try:
+            dt = datetime.fromisoformat(created_at_str)
+            dt_display = dt.strftime("%Y-%m-%d %H:%M")
+        except Exception:
+            dt_display = created_at_str[:16]
+
+        bubble = {
+            "type": "bubble",
+            "hero": {
+                "type": "image",
+                "url": img_url,
+                "size": "full",
+                "aspectRatio": "4:3",
+                "aspectMode": "cover",
+                "action": {
+                    "type": "uri",
+                    "label": "查看原圖",
+                    "uri": img_url
+                }
+            },
+            "body": {
+                "type": "box",
+                "layout": "vertical",
+                "contents": [
+                    {
+                        "type": "text",
+                        "text": f"📅 {dt_display}",
+                        "weight": "bold",
+                        "size": "sm",
+                        "color": "#333333",
+                        "align": "center"
+                    }
+                ],
+                "paddingAll": "10px"
+            }
+        }
+        bubbles.append(bubble)
+
+    carousel_dict = {
+        "type": "carousel",
+        "contents": bubbles
+    }
+    return FlexMessage(
+        alt_text="📸 群組照片回顧",
+        contents=FlexContainer.from_dict(carousel_dict)
+    )
+
+
+app = FastAPI(title="LINE Group Album Bot")
+
+# Mount static folder for serving photos
+app.mount("/static", StaticFiles(directory="static"), name="static")
+
 handler = None
 configuration = None
 
@@ -44,86 +167,16 @@ if LINE_CHANNEL_SECRET and LINE_CHANNEL_ACCESS_TOKEN:
     configuration = Configuration(access_token=LINE_CHANNEL_ACCESS_TOKEN)
 else:
     print("[WARNING] LINE_CHANNEL_SECRET or LINE_CHANNEL_ACCESS_TOKEN is not set.")
-    print("[INFO] Please create a .env file with your credentials from LINE Developers Console.")
 
 
 @app.get("/")
 def read_root():
     return {
         "status": "online",
-        "message": "LINE Bot Webhook Service is running!",
-        "configured": bool(LINE_CHANNEL_SECRET and LINE_CHANNEL_ACCESS_TOKEN)
+        "service": "LINE Group Album Bot (v1 基準版)",
+        "configured": bool(LINE_CHANNEL_SECRET and LINE_CHANNEL_ACCESS_TOKEN),
+        "base_url": os.getenv("BASE_URL", "")
     }
-
-
-def calculate_bmi(height_cm: float, weight_kg: float) -> str:
-    """Calculate BMI and return formatted diagnosis string."""
-    try:
-        height_m = height_cm / 100
-        bmi = weight_kg / (height_m ** 2)
-        bmi_rounded = round(bmi, 2)
-        
-        if bmi < 18.5:
-            category = "體重過輕"
-            advice = "建議均衡飲食，適量增加營養攝取！"
-        elif 18.5 <= bmi < 24.0:
-            category = "正常範圍"
-            advice = "太棒了！請繼續保持健康生活習慣！"
-        elif 24.0 <= bmi < 27.0:
-            category = "過重"
-            advice = "注意控制飲食並增加規律運動！"
-        else:
-            category = "肥胖"
-            advice = "建議諮詢專業營養師或醫師協助體重控制！"
-            
-        return (
-            f"📊 BMI 計算結果：\n"
-            f"• 身高：{height_cm} cm\n"
-            f"• 體重：{weight_kg} kg\n"
-            f"• BMI：{bmi_rounded}\n"
-            f"• 體位判定：{category}\n"
-            f"💡 小叮嚀：{advice}"
-        )
-    except Exception as e:
-        return f"計算發生錯誤：{str(e)}"
-
-
-def process_user_message(text: str) -> str:
-    """Process incoming text message and generate reply."""
-    stripped = text.strip()
-    
-    # 1. Help message
-    if stripped.lower() in ["help", "說明", "幫助", "功能", "?"]:
-        return (
-            "🤖 LINE Bot 功能指令清單：\n\n"
-            "1. 【BMI 計算】\n"
-            "   輸入範例：`BMI 175 68`\n"
-            "   格式：`BMI [身高cm] [體重kg]`\n\n"
-            "2. 【打招呼】\n"
-            "   輸入：`你好` 或 `hi`\n\n"
-            "3. 【其他訊息】\n"
-            "   直接傳送任何文字，我會自動回覆！"
-        )
-
-    # 2. Greeting
-    if stripped.lower() in ["hi", "hello", "你好", "您好", "哈囉"]:
-        return "👋 你好！很高興認識你！輸入「說明」可以查看我能為你做什麼喔！"
-
-    # 3. BMI calculation parser
-    if stripped.upper().startswith("BMI"):
-        parts = stripped.split()
-        if len(parts) == 3:
-            try:
-                h = float(parts[1])
-                w = float(parts[2])
-                return calculate_bmi(h, w)
-            except ValueError:
-                return "⚠️ 身高與體重請輸入有效數字，例如：`BMI 175 70`"
-        else:
-            return "⚠️ 格式不正確。請輸入格式如：`BMI 175 70` (身高cm 體重kg)"
-
-    # Default echo response
-    return f"📢 收到你的訊息：\n「{stripped}」\n\n(💡 輸入「說明」可查看可用指令)"
 
 
 @app.post("/callback")
@@ -133,7 +186,6 @@ async def callback(request: Request, x_line_signature: str = Header(None, alias=
             status_code=500,
             detail="LINE Bot credentials not configured in .env"
         )
-        
     if not x_line_signature:
         raise HTTPException(
             status_code=400,
@@ -142,24 +194,93 @@ async def callback(request: Request, x_line_signature: str = Header(None, alias=
 
     body = (await request.body()).decode("utf-8")
 
+    # Determine base URL for image links
+    effective_base_url = os.getenv("BASE_URL", "").rstrip("/")
+    if not effective_base_url:
+        forwarded_proto = request.headers.get("x-forwarded-proto", "http")
+        host = request.headers.get("x-forwarded-host") or request.headers.get("host", "localhost:8000")
+        effective_base_url = f"{forwarded_proto}://{host}"
+
     try:
-        # Handle webhook events
         events = handler.parser.parse(body, x_line_signature)
         with ApiClient(configuration) as api_client:
             line_bot_api = MessagingApi(api_client)
+            line_bot_blob_api = MessagingApiBlob(api_client)
+
             for event in events:
-                if isinstance(event, MessageEvent) and isinstance(event.message, TextMessageContent):
-                    user_reply = process_user_message(event.message.text)
+                if not isinstance(event, MessageEvent):
+                    continue
+
+                source_id = get_source_id(event.source)
+
+                # 1. 接收照片訊息並儲存
+                if isinstance(event.message, ImageMessageContent):
+                    image_bytes = line_bot_blob_api.get_message_content(event.message.id)
+                    file_name = f"{event.message.id}.jpg"
+                    file_path = os.path.join(PHOTOS_DIR, file_name)
+                    with open(file_path, "wb") as f:
+                        f.write(image_bytes)
+
+                    save_photo_record(
+                        group_id=source_id,
+                        message_id=event.message.id,
+                        file_name=file_name
+                    )
+
                     line_bot_api.reply_message(
                         ReplyMessageRequest(
                             reply_token=event.reply_token,
-                            messages=[TextMessage(text=user_reply)]
+                            messages=[TextMessage(text="📸 照片已成功儲存到群組相簿！")]
                         )
                     )
+
+                # 2. 接收文字訊息
+                elif isinstance(event.message, TextMessageContent):
+                    user_text = event.message.text.strip()
+
+                    # 【回顧功能】：固定 7 天
+                    if user_text == "回顧":
+                        photos = get_photos(group_id=source_id, days=7)
+                        if not photos:
+                            reply_msg = TextMessage(text="最近 7 天內沒有照片紀錄喔！")
+                        else:
+                            reply_msg = build_review_carousel(photos, effective_base_url)
+
+                        line_bot_api.reply_message(
+                            ReplyMessageRequest(
+                                reply_token=event.reply_token,
+                                messages=[reply_msg]
+                            )
+                        )
+
+                    # 【說明功能】
+                    elif user_text == "說明":
+                        help_text = (
+                            "🤖 群組相簿 Bot 使用說明（v1 基準版）：\n\n"
+                            "1. 發送照片：自動儲存至群組相簿\n"
+                            "2. 輸入「回顧」：查看最近 7 天的照片輪播\n"
+                            "3. 輸入「說明」：查看此功能說明"
+                        )
+                        line_bot_api.reply_message(
+                            ReplyMessageRequest(
+                                reply_token=event.reply_token,
+                                messages=[TextMessage(text=help_text)]
+                            )
+                        )
+
+                    # 【第一版基準行為】：未處理輸入檢查與格式，僅做簡單 Echo 回覆
+                    else:
+                        line_bot_api.reply_message(
+                            ReplyMessageRequest(
+                                reply_token=event.reply_token,
+                                messages=[TextMessage(text=f"📢 收到訊息：{event.message.text}")]
+                            )
+                        )
+
     except InvalidSignatureError:
         raise HTTPException(status_code=400, detail="Invalid signature. Please verify Channel Secret.")
     except Exception as e:
-        print(f"[ERROR] Error handling webhook: {e}", file=sys.stderr)
+        print(f"[ERROR] Webhook error: {e}", file=sys.stderr)
         raise HTTPException(status_code=500, detail=str(e))
 
     return JSONResponse(content={"status": "OK"})

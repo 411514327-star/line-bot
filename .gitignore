@@ -3,3 +3,15 @@ __pycache__/
 *.pyc
 .env
 .DS_Store
+
+# 簡報與投影片檔案（保留本機，不納入版本控制）
+generate_pptx.py
+presentation.html
+presentation.pptx
+
+# 本地相簿資料庫與暫存照片
+album.db
+static/photos/*.jpg
+static/photos/*.png
+static/photos/*.jpeg
+!static/photos/.gitkeep
