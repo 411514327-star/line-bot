@@ -46,6 +46,9 @@ LINE_CHANNEL_SECRET = os.getenv("LINE_CHANNEL_SECRET", "")
 LINE_CHANNEL_ACCESS_TOKEN = os.getenv("LINE_CHANNEL_ACCESS_TOKEN", "")
 BASE_URL = os.getenv("BASE_URL", "").rstrip("/")
 
+if BASE_URL and not BASE_URL.startswith("https://"):
+    print("[WARNING] BASE_URL 不是以 https:// 開頭，LINE 可能無法顯示圖片。")
+
 # SQLite & Directory Setup
 DB_PATH = "album.db"
 PHOTOS_DIR = os.path.join("static", "photos")
@@ -65,6 +68,13 @@ def init_db():
                 created_at TIMESTAMP NOT NULL
             )
         """)
+        try:
+            cursor.execute("""
+                CREATE UNIQUE INDEX IF NOT EXISTS idx_photos_message_id
+                ON photos(message_id)
+            """)
+        except sqlite3.Error:
+            print("[WARNING] 無法建立 photos.message_id 的唯一索引（可能已有重複資料）。")
         conn.commit()
 
 
@@ -77,7 +87,7 @@ def save_photo_record(group_id: str, message_id: str, file_name: str, created_at
     with sqlite3.connect(DB_PATH) as conn:
         cursor = conn.cursor()
         cursor.execute(
-            "INSERT INTO photos (group_id, message_id, file_name, created_at) VALUES (?, ?, ?, ?)",
+            "INSERT OR IGNORE INTO photos (group_id, message_id, file_name, created_at) VALUES (?, ?, ?, ?)",
             (group_id, message_id, file_name, created_at.isoformat())
         )
         conn.commit()
@@ -242,17 +252,30 @@ async def callback(request: Request, x_line_signature: str = Header(None, alias=
                         continue
 
                     # 群組照片：下載並儲存
-                    image_bytes = line_bot_blob_api.get_message_content(event.message.id)
-                    file_name = f"{event.message.id}.jpg"
-                    file_path = os.path.join(PHOTOS_DIR, file_name)
-                    with open(file_path, "wb") as f:
-                        f.write(image_bytes)
+                    try:
+                        image_bytes = line_bot_blob_api.get_message_content(event.message.id)
+                        file_name = f"{event.message.id}.jpg"
+                        file_path = os.path.join(PHOTOS_DIR, file_name)
+                        with open(file_path, "wb") as f:
+                            f.write(image_bytes)
 
-                    save_photo_record(
-                        group_id=source_id,
-                        message_id=event.message.id,
-                        file_name=file_name
-                    )
+                        save_photo_record(
+                            group_id=source_id,
+                            message_id=event.message.id,
+                            file_name=file_name
+                        )
+                    except Exception as e:
+                        print(f"[ERROR] Photo save failed: {e}", file=sys.stderr)
+                        try:
+                            line_bot_api.reply_message(
+                                ReplyMessageRequest(
+                                    reply_token=event.reply_token,
+                                    messages=[TextMessage(text="⚠️ 這張照片收不進來，請再傳一次看看")]
+                                )
+                            )
+                        except Exception:
+                            pass
+                        continue
 
                     line_bot_api.reply_message(
                         ReplyMessageRequest(
@@ -333,9 +356,9 @@ async def callback(request: Request, x_line_signature: str = Header(None, alias=
                                 invalid_reply = (
                                     "⚠️ 請輸入有效的天數數字！\n\n"
                                     "💡 指令範例：\n"
-                                    "• `回顧`（預設查看最近 7 天）\n"
-                                    "• `回顧 3`（查看最近 3 天）\n"
-                                    "• `回顧 14`（查看最近 14 天）"
+                                    "• 回顧（預設查看最近 7 天）\n"
+                                    "• 回顧 3（查看最近 3 天）\n"
+                                    "• 回顧 14（查看最近 14 天）"
                                 )
                                 line_bot_api.reply_message(
                                     ReplyMessageRequest(
