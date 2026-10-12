@@ -1,148 +1,92 @@
-# LINE 群組相簿 Bot（改善版）
+# 群組相簿 LINE Bot
 
-這是一個基於 **FastAPI** 與 **LINE Messaging API SDK v3** 開發的智慧群組相簿機器人。群組成員傳送的照片會自動安全存檔，並可透過 Flex Carousel 輪播卡片隨時回顧近期照片。本專案經歷了「第一版基準」至「改善版」的演進，具備完整的指令防呆、不支援訊息引導與聊天場景安全防護機制。
+把 LINE 群組變成朋友的共享相簿：大家在群組傳照片，Bot 自動存下來；輸入「回顧」就能用輪播卡片看最近幾天的照片。
+靈感來自 Retro（Photos with Friends）「小圈子、低壓力地分享生活照」的概念。
 
----
+> 本專案是課程作業「LINE Bot 改善版」。第一版沒有上傳 GitHub，因此先重建基準版本，再做兩輪改善，過程詳見 [開發紀錄](docs/index.html)。
 
-## 🌟 功能特點
+## 功能
 
-1. 📸 **群組相片自動收集存檔**：
-   - 在群組中發送相片時，透過 LINE Blob API 下載圖片本機保存，並以 SQLite 資料庫關聯群組 ID 與時間戳記。
-2. 🎠 **彈性相簿回顧輪播（Flex Carousel）**：
-   - 輸入 `回顧`：預設查詢最近 7 天內的相片，組裝為互動式輪播卡片。
-   - 輸入 `回顧 <天數>`（如 `回顧 3`、`回顧 14`）：動態查詢指定天數內的相片，點擊圖片可直接開啟原圖。
-3. 🛡️ **健全的輸入防呆與格式檢查**：
-   - **空白訊息防護**：過濾純空格與無效空白，提供指令引導。
-   - **格式錯誤提示**：輸入無效參數（如 `回顧 abc`、`回顧 0`）時，主動告知須輸入數字並附上正確範例。
-4. 💡 **不支援訊息友善引導**：
-   - 收到貼圖、語音、影片、位置或無法辨識的文字時，不再已讀不回或盲目 Echo，而是主動提示支援範圍並引導輸入「說明」。
-5. 🔒 **聊天場景防護（群組限定）**：
-   - 相簿核心功能（傳照片、相簿回顧）僅限群組使用；於一對一私聊操作時，溫和提示使用者將機器人加入群組。
+| 指令／行為 | 說明 |
+|---|---|
+| 在群組傳照片 | Bot 下載並儲存，回覆「照片已成功儲存到群組相簿！」 |
+| `說明` | 顯示使用說明與指令範例 |
+| `回顧` | 以 Flex Message 輪播顯示最近 7 天的照片（每張附上傳時間） |
+| `回顧 N` | 顯示最近 N 天的照片，例如 `回顧 3`、`回顧 14` |
+| 輸入錯誤 | `回顧 abc`、`回顧 0` 會提示正確格式；不認識的文字會提示輸入「說明」 |
+| 不支援的訊息 | 貼圖等非文字、非照片的訊息會提示目前支援的功能 |
+| 私聊使用 | 相簿功能只支援群組，私聊會提示「請將我加入群組」 |
+| 錯誤處理 | 照片下載或存檔失敗時會回覆提示；同一則訊息被 LINE 重送時不會重複寫入；`BASE_URL` 不是 https 時啟動會印出警告 |
 
----
+## 使用技術
 
-## 📁 專案檔案架構
+- Python、FastAPI、uvicorn
+- line-bot-sdk（LINE Messaging API）
+- SQLite（`album.db`）儲存照片紀錄，照片檔存在 `static/photos/`
+- python-dotenv 讀取環境變數
+- cloudflared（Cloudflare quick tunnel）讓本機伺服器有公開 https 網址，供 LINE 呼叫 Webhook 與顯示圖片
 
-```text
-0921 case/
-├── .venv/               # Python 虛擬環境
-├── docs/
-│   ├── project-plan.md  # 專題計畫書
-│   ├── test-log.md      # 測試紀錄表（含改善前後對照與實測結果）
-│   └── screenshots/     # 實機測試對話截圖清單
-├── static/
-│   └── photos/          # 本地暫存相片存放目錄（由 .gitignore 忽略實際檔案）
-├── .env                 # LINE 憑證與環境變數（機密金鑰，不納入版本控制）
-├── .env.example         # 環境變數設定範本（僅包含佔位符）
-├── .gitignore           # Git 忽略設定
-├── main.py              # FastAPI 主程式、LINE Webhook 與核心商業邏輯
-├── requirements.txt     # Python 依賴套件清單
-└── README.md            # 專案說明文件
+## 安裝與啟動
+
+1. 安裝 Python 3.10 以上。
+2. 下載專案後，在專案資料夾安裝套件：
+   ```
+   python -m pip install -r requirements.txt
+   ```
+3. 複製 `.env.example` 為 `.env`，填入自己的設定（變數名稱以 `.env.example` 為準）：
+   - LINE Channel secret
+   - LINE Channel access token
+   - `BASE_URL`：公開的 https 網址，**結尾不要加斜線**
+4. 啟動伺服器（預設埠號 8000）：
+   ```
+   python main.py
+   ```
+5. 另開一個終端機，建立公開網址：
+   ```
+   cloudflared tunnel --url http://localhost:8000
+   ```
+   取得 `https://xxxx.trycloudflare.com` 後：
+   - 把它填進 `.env` 的 `BASE_URL`，並重新啟動伺服器。
+   - 到 LINE Developers Console 的 Messaging API 頁，把 Webhook URL 設為 `https://xxxx.trycloudflare.com/callback`，按「核實」確認成功，並開啟「使用 Webhook」。
+6. 在 LINE Official Account Manager 開啟「允許帳號加入群組和多人聊天室」，把 Bot 加進群組。
+
+> 免費的 quick tunnel 網址每次啟動都會改變，網址改了就要重做第 5 步。
+
+## 使用方式
+
+1. 把 Bot 加進群組。
+2. 在群組直接傳照片，Bot 會回覆已儲存。
+3. 輸入 `回顧` 或 `回顧 3` 查看照片輪播。
+4. 不確定怎麼用時，輸入 `說明`。
+
+## 專案結構
+
+```
+main.py             主程式（Webhook、指令處理、資料庫）
+requirements.txt    套件清單
+.env.example        環境變數範本（不含真正金鑰）
+.gitignore          排除 .env、照片、資料庫
+docs/               計畫書、測試紀錄、開發紀錄網頁與截圖
 ```
 
----
+`.env`、`album.db`、`static/photos/` 不會上傳到 GitHub。
 
-## 🚀 快速上手與設定方式
+## 已知限制
 
-### 第一步：申請 LINE Developers 憑證
-1. 登入 [LINE Developers Console](https://developers.line.biz/console/)。
-2. 建立 Provider 並建立 **Messaging API** Channel。
-3. 取得兩組金鑰：
-   - **Channel Secret**（位於 `Basic settings` 標籤分頁下方）。
-   - **Channel Access Token**（切換到 `Messaging API` 標籤分頁最下方點擊 `Issue` 發行）。
-4. **關閉官方預設自動回覆**（避免回覆衝突）：
-   - 在 LINE Official Account 後台將「自動回應訊息」設為 **關閉**，將「Webhook」設為 **開啟**。
-   - 開啟「允許加入群組/多人聊天室」。
+- 免費 tunnel 沒有穩定性保證，網址每次重開都會變；正式使用需要固定網址的雲端部署。
+- 照片存在本機資料夾，沒有備份，也沒有雲端儲存。
+- 不依使用者區分權限，群組內每個人都能看全部照片。
+- 一則訊息裡含多行文字，會被當成同一個指令，不會逐行處理。
+- 目前所有測試照片都是同一天上傳，因此「依天數過濾掉較舊照片」尚未在實機上驗證。
+- 「照片下載失敗的提示」和「LINE 重送訊息時不重複寫入」兩項只做了程式修改，無法在 LINE 上人為製造情境，未實測。
+- 影片、語音等訊息類型未逐一測試，目前只實測貼圖。
+- 沒有排程推播、月回顧、Rich Menu 等功能，列為未來擴充。
+- `main.py` 的 `callback` 函式偏長，尚未拆分成多個處理函式。
 
----
+## 開發與 AI 工具
 
-### 第二步：設定專案環境變數
-複製 `.env.example` 為 `.env`，並填入您的金鑰與穿透網址：
-```env
-# LINE Messaging API Credentials
-LINE_CHANNEL_SECRET=你的_LINE_CHANNEL_SECRET
-LINE_CHANNEL_ACCESS_TOKEN=你的_LINE_CHANNEL_ACCESS_TOKEN
-PORT=8000
+- 計畫與文件草稿：Claude
+- 第一版基準版本與第二版改善：Antigravity
+- 第二版之後的錯誤處理修正：OpenCode（使用其內建的免費模型）
 
-# 公開穿透網址（Cloudflare Tunnel 或 ngrok，結尾不要加斜線）
-BASE_URL=https://your-tunnel-subdomain.trycloudflare.com
-```
-
-> ⚠️ **資安注意**：`.env` 包含真實機密金鑰，已由 `.gitignore` 嚴密隔離，請勿提交至 GitHub！
-
----
-
-### 第三步：安裝依賴並啟動伺服器
-在專案根目錄終端機執行：
-```powershell
-# 啟動虛擬環境並執行服務
-.\.venv\Scripts\python.exe main.py
-```
-啟動後可開啟瀏覽器存取 `http://127.0.0.1:8000/`，確認狀態為：
-```json
-{
-  "status": "online",
-  "service": "LINE Group Album Bot (v2 改善版)",
-  "configured": true,
-  "base_url": "https://your-tunnel-subdomain.trycloudflare.com"
-}
-```
-
----
-
-### 第四步：設定公開 HTTPS 網址 (Webhook)
-LINE 要求 Webhook 必須為公開 HTTPS 網址，可使用 **Cloudflare Tunnel** 或 **ngrok**：
-
-- **使用 Cloudflare Tunnel**：
-  ```bash
-  cloudflared tunnel --url http://localhost:8000
-  ```
-- **使用 ngrok**：
-  ```bash
-  ngrok http 8000
-  ```
-
-將產生的 HTTPS 網址加上 `/callback`（例如：`https://xxxx.trycloudflare.com/callback`），填入 LINE Developers 後台的 **Webhook URL** 並點擊 **Verify** 確認連線成功。
-
----
-
-## 💬 使用方法與指令範例
-
-將機器人邀請至 LINE 群組中即可開始使用：
-
-| 操作情境 | 輸入內容 | 機器人回應 |
-| :--- | :--- | :--- |
-| **儲存照片** | 在群組中發送照片 | `📸 照片已成功儲存到群組相簿！` |
-| **預設回顧** | `回顧` | 回傳該群組最近 7 天內的照片輪播卡片（Flex Carousel） |
-| **自訂天數回顧** | `回顧 3` 或 `回顧 14` | 回傳該群組最近指定天數（3天/14天）的照片輪播卡片 |
-| **查看功能說明** | `說明` | 顯示包含相簿儲存、回顧天數等完整操作指南 |
-| **格式錯誤示範** | `回顧 abc` 或 `回顧 0` | `⚠️ 請輸入有效的天數數字！💡 指令範例：回顧 3...` |
-| **不支援訊息** | 發送貼圖 / 影片 / 語音 | `⚠️ 目前僅支援儲存照片與相簿指令，不支援此類型的訊息。💡 請輸入「說明」...` |
-| **未知文字指令** | 輸入 `哈囉` 或任意文字 | `⚠️ 無法辨識指令「哈囉」。💡 請輸入「說明」查看支援的功能...` |
-| **私聊傳照片** | 於一對一聊天視窗傳照片 | `⚠️ 本相簿功能僅支援在群組中使用，請將我加入群組後再傳送照片喔！` |
-| **私聊輸入回顧** | 於一對一聊天視窗輸入 `回顧` | `⚠️ 「回顧」功能僅支援在群組中使用，請將我加入群組後再試喔！` |
-
----
-
-## 📊 改善前後對比 (Before vs After)
-
-| 評估面向 | 改善前（v1 基準版 / Commit 1） | 改善後（v2 改善版 / Commit 2） |
-| :--- | :--- | :--- |
-| **回顧天數** | 固定 7 天，輸入 `回顧 3` 被當作一般文字 Echo | 支援動態解析天數（`回顧 3`），預設 7 天 |
-| **參數檢查** | 輸入 `回顧 abc` 無提示，直接 Echo 使用者輸入 | 嚴格防呆校驗，主動提示需輸入有效數字與範例 |
-| **非文字/貼圖** | 傳送貼圖、影片、語音完全無回應（已讀不回） | 主動告知不支援該格式，並引導使用者輸入「說明」 |
-| **未知指令** | 單純 Echo 重複輸入之字串 | 明確提示無法辨識，並引導查詢「說明」選單 |
-| **聊天室來源** | 一對一私聊與群組未區分，私聊亦會存入相簿 | 嚴格限制於群組使用，私聊時溫和提示加入群組 |
-
----
-
-## ⚠️ 已知限制
-
-1. **公開圖片網址需求**：
-   - LINE Flex Message Carousel 渲染圖片需仰賴可公開訪問的 HTTPS 網址。在本機開發環境下，若關閉穿透通道（Tunnel）或網址重設，需同步更新 `.env` 中的 `BASE_URL`。
-2. **LINE Flex 輪播卡片上限**：
-   - LINE Messaging API 之 Carousel Container 單則訊息最多支援呈現 10~12 張 Bubble 卡片；若該天數範圍照片超過 10 張，系統將優先取最新 10 張進行輪播展示。
-3. **客戶端純空白輸入限制**：
-   - LINE App 行動端介面在文字框全為空格時，發送按鈕預設為停用（灰底不可按），故無法由標準 LINE App 送出純空格訊息（後端仍具備防禦機制）。
-4. **一對一相簿存取限制**：
-   - 本 Bot 專為群組活動設計，個人聊天室不開放存檔與照片回顧功能。
+測試結果見 [docs/test-log.md](docs/test-log.md)，完整過程見 [開發紀錄網頁](docs/index.html)。
